@@ -1,0 +1,31 @@
+services:
+  dashboard:
+    build: .
+    container_name: csp-dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - csp-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/csp-reports.db
+    restart: unless-stopped
+
+  receiver:
+    build: .
+    container_name: csp-receiver
+    command: ["node", "report-receiver.js"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - csp-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - DB_PATH=/app/data/csp-reports.db
+    restart: unless-stopped
+
+volumes:
+  csp-data:
+    driver: local

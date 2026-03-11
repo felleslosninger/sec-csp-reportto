@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="no" data-color-scheme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSP Reports</title>
+  <link rel="stylesheet" href="/node_modules/@digdir/designsystemet-css/dist/src/index.css">
+  <link rel="stylesheet" href="/node_modules/@digdir/designsystemet-css/dist/theme/designsystemet.css">
+  <script src="/node_modules/@digdir/designsystemet-web/dist/umd/index.js"></script>
+  <link rel="stylesheet" href="https://altinncdn.no/fonts/inter/v4.1/inter.css" 
+        integrity="sha384-OcHzc/By/OPw9uJREawUCjP2inbOGKtKb4A/I2iXxmknUfog2H8Adx71tWVZRscD" 
+        crossorigin="anonymous">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      font-feature-settings: 'cv05' 1;
+      margin: 0;
+      padding: 0;
+      background-color: var(--ds-color-neutral-background-subtle);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .stats-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--ds-color-neutral-surface-default);
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-card h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--ds-color-neutral-text-subtle);
+      margin: 0 0 0.5rem 0;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-card .count {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--ds-color-neutral-text-default);
+      margin: 0;
+    }
+
+    .stat-card .label {
+      font-size: 0.875rem;
+      color: var(--ds-color-neutral-text-subtle);
+      margin-top: 0.25rem;
+    }
+
+    .controls {
+      background: var(--ds-color-neutral-surface-default);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      display: flex;
+      gap: 1rem;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    .form-field {
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .code {
+      font-family: 'Courier New', monospace;
+      background-color: var(--ds-color-neutral-surface-subtle);
+      padding: 0.125rem 0.375rem;
+      border-radius: 3px;
+      font-size: 0.8125rem;
+      word-break: break-all;
+    }
+
+    .timestamp {
+      white-space: nowrap;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--ds-color-neutral-text-subtle);
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--ds-color-neutral-text-subtle);
+    }
+
+    .table-wrapper {
+      background: var(--ds-color-neutral-surface-default);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      .controls {
+        flex-direction: column;
+      }
+
+      .form-field {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="ds-heading" data-size="2xl">CSP Reports</h1>
+    <p class="ds-paragraph" data-size="lg" data-color="subtle">Content Security Policy violation reports</p>
+
+    <div class="controls">
+      <ds-field class="form-field ds-field">
+        <label class="ds-label">Filter by domain</label>
+        <input class="ds-input" type="text" placeholder="example.com" id="domainFilter">
+      </ds-field>
+      <button class="ds-button" type="button" onclick="applyFilter()">Filter</button>
+      <button class="ds-button" type="button" data-variant="secondary" onclick="clearFilter()">Clear</button>
+      <button class="ds-button" type="button" data-variant="secondary" onclick="loadReports()">Refresh</button>
+    </div>
+
+    <div class="stats-container" id="statsContainer">
+      <div class="stat-card">
+        <h3>Total Reports</h3>
+        <div class="count" id="totalCount">-</div>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div id="loading" class="loading">Loading reports...</div>
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p>No CSP reports found</p>
+      </div>
+      <table class="ds-table" id="reportsTable" data-zebra data-hover style="display: none;">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Violated Directive</th>
+            <th>Blocked URI</th>
+            <th>Document URI</th>
+            <th>Source File</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let currentFilter = '';
+
+    async function loadReports() {
+      const loading = document.getElementById('loading');
+      const emptyState = document.getElementById('emptyState');
+      const table = document.getElementById('reportsTable');
+      const tableBody = document.getElementById('tableBody');
+
+      loading.style.display = 'block';
+      emptyState.style.display = 'none';
+      table.style.display = 'none';
+
+      try {
+        const url = currentFilter 
+          ? `/api/reports?domain=${encodeURIComponent(currentFilter)}`
+          : '/api/reports';
+        
+        const response = await fetch(url);
+        const reports = await response.json();
+
+        loading.style.display = 'none';
+
+        if (reports.length === 0) {
+          emptyState.style.display = 'block';
+          return;
+        }
+
+        tableBody.innerHTML = '';
+        reports.forEach(report => {
+          const row = document.createElement('tr');
+          const date = new Date(report.timestamp);
+          
+          row.innerHTML = `
+            <td class="timestamp">${date.toLocaleString('no-NO')}</td>
+            <td><span class="code">${escapeHtml(report.violated_directive)}</span></td>
+            <td><span class="code">${escapeHtml(report.blocked_uri)}</span></td>
+            <td><span class="code">${escapeHtml(report.document_uri)}</span></td>
+            <td><span class="code">${escapeHtml(report.source_file || '-')}</span></td>
+          `;
+          
+          tableBody.appendChild(row);
+        });
+
+        table.style.display = 'table';
+      } catch (error) {
+        console.error('Error loading reports:', error);
+        loading.style.display = 'none';
+        emptyState.style.display = 'block';
+        emptyState.innerHTML = '<p>Error loading reports</p>';
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const url = currentFilter 
+          ? `/api/reports?domain=${encodeURIComponent(currentFilter)}`
+          : '/api/reports';
+        
+        const reportsResponse = await fetch(url);
+        const reports = await reportsResponse.json();
+
+        // Calculate stats from filtered reports
+        const violationCounts = {};
+        reports.forEach(report => {
+          const directive = report.violated_directive;
+          violationCounts[directive] = (violationCounts[directive] || 0) + 1;
+        });
+
+        const stats = Object.entries(violationCounts)
+          .map(([violated_directive, count]) => ({ violated_directive, count }))
+          .sort((a, b) => b.count - a.count);
+
+        const statsContainer = document.getElementById('statsContainer');
+        
+        // Keep total count card and add top violations
+        let statsHTML = `
+          <div class="stat-card">
+            <h3>${currentFilter ? 'Filtered' : 'Total'} Reports</h3>
+            <div class="count">${reports.length}</div>
+            ${currentFilter ? `<div class="label">${escapeHtml(currentFilter)}</div>` : ''}
+          </div>
+        `;
+
+        stats.slice(0, 5).forEach((stat, index) => {
+          statsHTML += `
+            <div class="stat-card">
+              <h3>Top ${index + 1} Violation</h3>
+              <div class="count">${stat.count}</div>
+              <div class="label">${escapeHtml(stat.violated_directive)}</div>
+            </div>
+          `;
+        });
+
+        statsContainer.innerHTML = statsHTML;
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+
+    function applyFilter() {
+      const input = document.getElementById('domainFilter');
+      currentFilter = input.value.trim();
+      // Load stats first, then reports
+      Promise.all([loadStats(), loadReports()]).catch(console.error);
+    }
+
+    function clearFilter() {
+      document.getElementById('domainFilter').value = '';
+      currentFilter = '';
+      // Load stats first, then reports
+      Promise.all([loadStats(), loadReports()]).catch(console.error);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Handle Enter key in filter input
+    document.getElementById('domainFilter').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        applyFilter();
+      }
+    });
+
+    // Load data on page load
+    loadStats();
+    loadReports();
+  </script>
+</body>
+</html>
