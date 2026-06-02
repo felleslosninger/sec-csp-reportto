@@ -41,10 +41,15 @@ db.exec(`
 `);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_timestamp ON csp_reports(timestamp)`);
 
+const LOCALHOST_FILTER = `document_uri NOT LIKE '%localhost%' AND document_uri NOT LIKE '%127.0.0.1%' AND document_uri NOT LIKE '%[::1]%'`;
+
 // Prepared statements
-const getAllReports = db.prepare(`
-  SELECT * FROM csp_reports ORDER BY timestamp DESC
-`);
+const countAll = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER}`);
+const getPage = db.prepare(`SELECT * FROM csp_reports WHERE ${LOCALHOST_FILTER} ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
+const countFiltered = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?)`);
+const getPageFiltered = db.prepare(`SELECT * FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?) ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
+const getTopViolations = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
+const getTopViolationsFiltered = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?) GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
 
 // Helper function to send JSON response
 const sendJSON = (res, data, status = 200) => {
@@ -71,18 +76,35 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/api/reports' && req.method === 'GET') {
     const domain = url.searchParams.get('domain');
-    let reports;
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+    const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit') || '100', 10)));
+    const offset = (page - 1) * limit;
+
+    let reports, total;
     if (domain) {
-      const stmt = db.prepare(`
-        SELECT * FROM csp_reports 
-        WHERE document_uri LIKE ? OR blocked_uri LIKE ?
-        ORDER BY timestamp DESC
-      `);
-      reports = stmt.all(`%${domain}%`, `%${domain}%`);
+      const pattern = `%${domain}%`;
+      total = countFiltered.get(pattern, pattern).count;
+      reports = getPageFiltered.all(pattern, pattern, limit, offset);
     } else {
-      reports = getAllReports.all();
+      total = countAll.get().count;
+      reports = getPage.all(limit, offset);
     }
-    sendJSON(res, reports);
+    sendJSON(res, { reports, total, page, limit });
+    return;
+  }
+
+  if (pathname === '/api/stats' && req.method === 'GET') {
+    const domain = url.searchParams.get('domain');
+    let total, topViolations;
+    if (domain) {
+      const pattern = `%${domain}%`;
+      total = countFiltered.get(pattern, pattern).count;
+      topViolations = getTopViolationsFiltered.all(pattern, pattern);
+    } else {
+      total = countAll.get().count;
+      topViolations = getTopViolations.all();
+    }
+    sendJSON(res, { total, topViolations });
     return;
   }
 
