@@ -41,13 +41,15 @@ db.exec(`
 `);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_timestamp ON csp_reports(timestamp)`);
 
+const LOCALHOST_FILTER = `document_uri NOT LIKE '%localhost%' AND document_uri NOT LIKE '%127.0.0.1%' AND document_uri NOT LIKE '%[::1]%'`;
+
 // Prepared statements
-const countAll = db.prepare(`SELECT COUNT(*) as count FROM csp_reports`);
-const getPage = db.prepare(`SELECT * FROM csp_reports ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
-const countFiltered = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE document_uri LIKE ? OR blocked_uri LIKE ?`);
-const getPageFiltered = db.prepare(`SELECT * FROM csp_reports WHERE document_uri LIKE ? OR blocked_uri LIKE ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
-const getTopViolations = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
-const getTopViolationsFiltered = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports WHERE document_uri LIKE ? OR blocked_uri LIKE ? GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
+const countAll = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER}`);
+const getPage = db.prepare(`SELECT * FROM csp_reports WHERE ${LOCALHOST_FILTER} ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
+const countFiltered = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?)`);
+const getPageFiltered = db.prepare(`SELECT * FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?) ORDER BY timestamp DESC LIMIT ? OFFSET ?`);
+const getTopViolations = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
+const getTopViolationsFiltered = db.prepare(`SELECT violated_directive, COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER} AND (document_uri LIKE ? OR blocked_uri LIKE ?) GROUP BY violated_directive ORDER BY count DESC LIMIT 5`);
 
 // Helper function to send JSON response
 const sendJSON = (res, data, status = 200) => {
