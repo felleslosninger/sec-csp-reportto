@@ -41,7 +41,11 @@ db.exec(`
 `);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_timestamp ON csp_reports(timestamp)`);
 
-const LOCALHOST_FILTER = `document_uri NOT LIKE '%localhost%' AND document_uri NOT LIKE '%127.0.0.1%' AND document_uri NOT LIKE '%[::1]%'`;
+const SHOW_LOCALHOST = /^(1|true|yes)$/i.test(process.env.SHOW_LOCALHOST || '');
+const LOCALHOST_FILTER = SHOW_LOCALHOST
+  ? `1=1`
+  : `document_uri NOT LIKE '%localhost%' AND document_uri NOT LIKE '%127.0.0.1%' AND document_uri NOT LIKE '%[::1]%'`;
+
 
 // Prepared statements
 const countAll = db.prepare(`SELECT COUNT(*) as count FROM csp_reports WHERE ${LOCALHOST_FILTER}`);

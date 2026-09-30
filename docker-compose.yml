@@ -11,6 +11,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DB_PATH=/app/data/csp-reports.db
+      # Set to true to also show reports from localhost (useful for local testing)
+      - SHOW_LOCALHOST=true
     restart: unless-stopped
 
   receiver:
