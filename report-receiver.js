@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 8080;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'csp-reports.db');
+const RATE_LIMIT_PER_MIN = parseInt(process.env.RATE_LIMIT_PER_MIN || '120', 10);
 
 // Initialize database
 const db = new Database(DB_PATH);
@@ -67,12 +68,7 @@ const parseBody = (req) => {
 };
 
 const server = http.createServer(async (req, res) => {
-  // Only allow POST to /api/reports
-  if (req.url !== '/api/reports' || req.method !== 'POST') {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-    return;
-  }
+  const isReportPath = req.url === '/api/reports';
 
   // Security headers
   res.setHeader('Content-Security-Policy', "default-src 'none'");
@@ -80,9 +76,31 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  res.setHeader('Access-Control-Allow-Origin', ''); // No CORS by default
-  res.setHeader('Access-Control-Allow-Methods', 'POST');
+
+  // Browsers send CSP violation reports as CORS requests. Since the
+  // Content-Type (application/csp-report or application/reports+json) is not
+  // CORS-safelisted, a preflight is required before the report is delivered.
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  if (isReportPath && req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Only allow POST to /api/reports
+  if (!isReportPath || req.method !== 'POST') {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+    return;
+  }
 
   // Rate limiting (very simple, per-process, per-IP)
   const ip = req.socket.remoteAddress;
@@ -91,7 +109,7 @@ const server = http.createServer(async (req, res) => {
   global.rateLimit[ip] = global.rateLimit[ip] || [];
   // Remove old timestamps
   global.rateLimit[ip] = global.rateLimit[ip].filter(ts => now - ts < 60000);
-  if (global.rateLimit[ip].length > 10) { // 10 req/min per IP
+  if (global.rateLimit[ip].length > RATE_LIMIT_PER_MIN) {
     res.writeHead(429, { 'Content-Type': 'text/plain' });
     res.end('Too Many Requests');
     return;
@@ -103,14 +121,15 @@ const server = http.createServer(async (req, res) => {
     const reports = Array.isArray(body) ? body : [body];
     let inserted = 0;
     for (const report of reports) {
-      const cspReport = report['csp-report'] || report;
+      const cspReport = report['csp-report'] || report.body || report;
       if (cspReport) {
         // Basic input validation
-        if (typeof cspReport !== 'object' || !cspReport['document-uri']) continue;
+        const documentUri = cspReport['document-uri'] || cspReport.documentURL || '';
+        if (typeof cspReport !== 'object' || !documentUri) continue;
         const timestamp = Date.now();
         insertReport.run(
           timestamp,
-          cspReport['document-uri'] || cspReport.documentURL || '',
+          documentUri,
           cspReport['violated-directive'] || '',
           cspReport['effective-directive'] || '',
           cspReport['blocked-uri'] || cspReport.blockedURL || '',
